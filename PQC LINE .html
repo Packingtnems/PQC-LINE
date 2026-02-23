@@ -1,0 +1,1305 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>KẾT QUẢ KIỂM TRA PQC - (Fixed with QC Check + Histories)</title>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * { box-sizing: border-box; margin:0; padding:0; font-family: 'Roboto', Arial, sans-serif; }
+        body { background:#f0f2f5; color:#333; padding:10px; }
+        .container { max-width:100%; margin:0 auto; background:white; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.1); overflow:hidden; }
+        header { background:linear-gradient(135deg,#2c3e50,#4a6580); color:white; padding:15px; text-align:center; position:relative; }
+        h1 { font-size:1.2rem; margin:0; }
+        .section { padding:15px; border-bottom:1px solid #eaeaea; }
+        .section-title { font-weight:bold; margin-bottom:12px; color:#2c3e50; display:flex; align-items:center; }
+        .form-group { margin-bottom:12px; }
+        label { display:block; margin-bottom:6px; color:#555; font-weight:500; }
+        input, select, textarea, button { font-size:14px; }
+        input, select, textarea { width:100%; padding:10px 12px; border:1px solid #ddd; border-radius:8px; background:#f9f9f9; }
+        button {
+    cursor:pointer;
+    border-radius:8px;
+    padding:10px 12px;
+    border:none;
+    background:linear-gradient(135deg,#2c3e50,#4a6580);
+    color:white;
+    transition: transform 0.1s ease, box-shadow 0.1s ease; /* thêm hiệu ứng mượt */
+    box-shadow: 0 4px 6px rgba(0,0,0,0.2); /* thêm bóng đổ */
+}
+
+button:hover {
+    transform: translateY(-2px); /* nổi lên khi hover */
+    box-shadow: 0 6px 10px rgba(0,0,0,0.25);
+}
+
+button:active {
+    transform: scale(0.95); /* thu nhỏ khi nhấn */
+    box-shadow: 0 2px 3px rgba(0,0,0,0.3); /* bóng đổ nhỏ hơn */
+}
+
+        button.secondary { background:#f0f2f5; color:#2c3e50; border:1px solid #ddd; }
+        .form-row { display:flex; gap:10px; }
+        .form-row .form-group { flex:1; margin-bottom:0; }
+        .tabs { display:flex; background:#f0f2f5; border-radius:10px; margin-bottom:15px; overflow:hidden; }
+        .tab { flex:1; padding:10px; text-align:center; cursor:pointer; }
+        .tab.active { background:#4a6580; color:white; font-weight:500; }
+        .tab-content { display:none; }
+        .tab-content.active { display:block; }
+        .filter-controls { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:10px; }
+        .summary-cards { display:flex; gap:10px; margin-bottom:15px; flex-wrap:wrap; }
+        .summary-card { flex:1; min-width:120px; background:white; padding:12px; border-radius:10px; text-align:center; box-shadow:0 2px 5px rgba(0,0,0,0.08); }
+        .charts-container { display:flex; flex-direction:column; gap:12px; margin-top:10px; }
+        .chart-wrapper { background:white; padding:12px; border-radius:8px; box-shadow:0 2px 6px rgba(0,0,0,0.06); }
+        canvas { width:100% !important; height:300px !important; }
+        @media (max-width:600px) { .form-row { flex-direction:column; } .filter-controls { flex-direction:column; } }
+        .status-indicator {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        .status-connected {
+            background: #28a745;
+            color: white;
+        }
+        .status-disconnected {
+            background: #dc3545;
+            color: white;
+        }
+    </style>
+
+  <!-- iOS support -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="QC Check">
+  <link rel="apple-touch-icon" href="icon.png">
+
+  <!-- Android support -->
+  <link rel="manifest" href="manifest.json">
+
+  <!-- Register Service Worker -->
+  <script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js')
+      .then(reg => console.log('Service Worker registered', reg))
+      .catch(err => console.error('Service Worker failed', err));
+  }
+  </script>
+ <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
+ </head>
+<body>
+    <div class="container">
+        <header>
+            <h1>KẾT QUẢ KIỂM TRA PQC</h1>
+            <div style="margin-top:8px;">
+                <button onclick="testConnection()" style="margin-right:6px;padding:6px 10px;background:#28a745">🔧 Test Kết Nối Google Sheets</button>
+                <button onclick="showConfig()" style="padding:6px 10px;background:#17a2b8">⚙️ Cấu hình</button>
+                <button onclick="localStorage.removeItem('qcLocalData'); location.reload();" 
+                style="background: #dc3545; margin-left: 10px; padding:6px 10px;">
+                🗑️ Xóa dữ liệu
+                </button>
+            </div>
+         <span id="syncStatus" class="status-indicator status-disconnected" style="margin-left: 10px; padding: 4px 8px; border-radius: 4px; background: #dc3545; color: white;">Chưa kết nối</span>
+        </header>
+
+        <div class="config-panel section" id="configPanel" style="display:none;">
+            <h3>Cấu hình Google Sheets</h3>
+            <div class="form-group">
+                <label>URL Google Apps Script</label>
+                <input type="text" id="scriptUrl" placeholder="https://script.google.com/..." />
+            </div>
+            <div class="form-group">
+                <label>Sheet ID (tùy chọn)</label>
+                <input type="text" id="sheetId" placeholder="1xYz..." />
+            </div>
+            <div style="display:flex; gap:8px;">
+                <button onclick="saveConfig()">Lưu cấu hình</button>
+                <button class="secondary" onclick="openScriptEditor()" style="background:#ffc107;color:#000;border:0;">📝 Mở Script Editor</button>
+            </div>
+        </div>
+
+        <div class="tabs" style="margin-top:12px;">
+            <div class="tab active" data-tab="input">Nhập liệu</div>
+            <div class="tab" data-tab="preview">Xem trước</div>
+            <div class="tab" data-tab="stats">Thống kê</div>
+        </div>
+
+        <div id="input-tab" class="tab-content active">
+            <div class="section">
+                <div class="section-title">📋 Thông tin chung</div>
+                <div class="form-group">
+                 <label>Khách hàng</label>
+                  <input list="customerList" id="customer" placeholder="Chọn hoặc nhập khách hàng" />
+                  <datalist id="customerList">
+                   <option value="DATBIKE">
+                    <option value="LUCY">
+                    <option value="SMARTRADE">
+                    <option value="THERMTROL">
+                    </datalist>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>PO</label>
+                        <input list="poList" id="po" placeholder="Chọn hoặc nhập PO" />
+                        <datalist id="poList"></datalist>
+                    </div>
+                    <div class="form-group">
+                        <label>WO ID</label>
+                        <input list="woIdList" id="woId" placeholder="Chọn hoặc nhập WO ID" />
+                        <datalist id="woIdList"></datalist>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">🔄 Ca & Sản phẩm</div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Ca làm việc</label>
+                        <select id="shift" required>
+                            <option value="">Chọn khu vực và ca làm việc</option>
+                            <option value="Ca 1: 6:00-14:00">SMT Ca 1: 6:00-14:00</option>
+                            <option value="Ca 2: 14:00-22:00">SMT Ca 2: 14:00-22:00</option>
+                            <option value="Ca 3: 22:00-6:00 Hôm sau">SMT Ca 3: 22:00-6:00 Hôm sau</option>
+                            <option value="Ca 1 Dài: 6:00-18:00">SMT Ca 1 Dài: 6:00-18:00</option>
+                            <option value="Ca 2 Dài: 18:00-6:00 Hôm sau">SMT Ca 2 Dài: 18:00-6:00 Hôm sau</option>
+                            <option value="Ca HC: 6:00-16:30">SMT Ca HC: 6:00-16:30</option>
+
+                            <option value="Ca 1: 6:00-14:00">BB Ca 1: 6:00-14:00</option>
+                            <option value="Ca 2: 14:00-22:00">BB Ca 2: 14:00-22:00</option>
+                            <option value="Ca 3: 22:00-6:00 Hôm sau">BB Ca 3: 22:00-6:00 Hôm sau</option>
+                            <option value="Ca 1 Dài: 6:00-18:00">BB Ca 1 Dài: 6:00-18:00</option>
+                            <option value="Ca 2 Dài: 18:00-6:00 Hôm sau">BB Ca 2 Dài: 18:00-6:00 Hôm sau</option>
+                            <option value="Ca HC: 6:00-16:30">BB Ca HC: 6:00-16:30</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Mã sản phẩm</label>
+                        <select id="productCode" required>
+                          <option value="">Chọn mã sản phẩm</option>
+			  <option value="BMS QUATUM">BMS QUATUM</option>	
+                          <option value="BMS 57AH">BMS 57AH</option>
+                          <option value="BMS 85AH">BMS 85AH</option>
+                          <option value="BMS 57AH SENSOR TOP">BMS SENSOR 57AH TOP</option>
+                          <option value="BMS SENSOR 57AH BOT">BMS SENSOR 57AH BOT</option>
+                          <option value="BMS SENSOR 85AH TOP">BMS SENSOR 85AH TOP</option>
+                          <option value="BMS SENSOR 85AH BOT">BMS SENSOR 85AH BOT</option>
+                          <option value="BMS 57AH">BMS 57AH</option>
+                          <option value="BMS 85AH">BMS 85AH</option>
+                          <option value="IZ-1-R3">IZ-1-R3</option>
+                          <option value="RM-4K-R3">IZ-1-R3</option>
+                          <option value="CLIP5 MAIN">CLIP5 MAIN</option>
+                          <option value="CLIP5 KEY">CLIP5 KEY</option>
+                          <option value="FLIP5 MAIN">FLIP5 MAIN</option>   
+                          <option value="FLIP5 KEY & LED">FLIP5 KEY & LED</option> 
+                          <option value="FLIP5 USB">FLIP5 USB</option>
+                          <option value="XTREME 4 AMP">XTREME 4 AMP</option>
+                          <option value="XTREME 4 MAIN">XTREME 4 MAIN</option>   
+                          <option value="VCU">VCU</option>   
+                          <option value="DC-DC">DC-DC</option>   
+                          <option value="P-7937">P-7937</option>  
+                          <option value="P-8105">P-8105</option>  
+                          <option value="P-8149">P-8149</option>   
+			  <option value="SCM-0210000746">SCM-0210000746</option> 
+			  <option value="CONTROLLER">CONTROLLER</option> 
+                          </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">📅 Ngày & Thời gian</div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Ngày</label>
+                        <input type="date" id="date" />
+                    </div>
+                    <div class="form-group">
+                        <label>Thời gian</label>
+                        <input type="time" id="productionTime" />
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">🏭 Sản lượng</div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Số lượng giao</label>
+                        <input type="number" id="deliveredQty" min="0" />
+                    </div>
+                    <div class="form-group">
+                        <label>Số lượng QC check</label>
+                        <input type="number" id="qcCheckQty" min="0" />
+                    </div>
+                    <div class="form-group">
+                        <label>OK</label>
+                        <input type="number" id="okQty" min="0" />
+                    </div>
+                    <div class="form-group">
+                        <label>NG</label>
+                        <input type="number" id="ngQty" min="0" />
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">❌ Mô tả lỗi</div>
+               <datalist id="errorDescList"></datalist>
+                <div id="errorContainer">
+                    <div class="error-row" style="display:flex; gap:8px; align-items:center;">
+                      <select class="error-desc">
+                       <option value="">-- Chọn mô tả lỗi --</option>
+                        <option value="LỖI THANH ĐỒNG">LỖI THANH ĐỒNG</option>
+                        <option value="MẤT LINH KIỆN">MẤT LINH KIỆN</option>
+                        <option value="BẮC CẦU LINH KIỆN">BẮC CẦU LINH KIỆN</option>
+                        <option value="LỖI CONNECTOR TRẮNG">LỖI CONNECTOR TRẮNG</option>
+                        <option value="NGƯỢC HƯỚNG">NGƯỢC HƯỚNG</option>
+                        <option value="LỖI DÂY ÂM">LỖI DÂY ÂM</option>
+                        <option value="MỐI HÀN">MỐI HÀN</option>
+                        <option value="LỖI BỌC CO NHIỆT">LỖI BỌC CO NHIỆT</option>
+                        <option value="LỖI CONNECTOR ĐEN">LỖI CONNECTOR ĐEN</option>
+                        <option value="BỂ, VỠ LINH KIỆN">BỂ, VỠ LINH KIỆN</option>
+                        <option value="LỖI PCB">LỖI PCB</option>
+                        <option value="LỖI QR CODE">LỖI QR CODE</option>
+                        <option value="LỖI TẤM NHÔM">LỖI TẤM NHÔM</option>
+                        <option value="LỖI KEO POTTING">LỖI KEO POTTING</option>
+                        <option value="LỖI VỆ SINH">LỖI VỆ SINH</option>
+                        <option value="LỖI TEST ĐIỆN">LỖI TEST ĐIỆN</option>
+                        <option value="LỖI ỐC TRẮNG">LỖI ỐC TRẮNG</option>
+                        <option value="LỖI ỐC VÀNG">LỖI ỐC VÀNG</option>
+                        <option value="LỖI FORM U">LỖI FORM U</option>
+                        <option value="LỖI 3M">LỖI 3M</option>
+                        <option value="LỖI KHÔNG CÓ NHÃN TEST PASS">LỖI KHÔNG CÓ NHÃN TEST PASS</option>
+                        <option value="LỖI LỆCH LINH KIỆN">LỖI LỆCH LINH KIỆN</option>
+                        <option value="LỖI SAI LINH KIỆN">LỖI SAI LINH KIỆN</option>
+                        <option value="LỖI MOSFET">LỖI MOSFET</option>
+                        <option value="HÀN GIẢ">HÀN GIẢ</option>
+                        <option value="LỖI TRỞ SHUNT">LỖI TRỞ SHUNT</option>
+                        <option value="LỖI COATING">LỖI COATING</option>
+                        <option value="LỖI NHÃN DÁN">LỖI NHÃN DÁN</option>
+                       </select>
+                       <input type="number" class="error-qty" min="0" placeholder="Số lượng" />
+                       <button type="button" class="remove-error secondary" style="padding:6px 8px;">Xóa</button>
+                      </div>
+                  </div>
+
+                <div style="margin-top:8px;">
+                    <button type="button" id="addError" class="secondary">+ Thêm lỗi</button>
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">👥 Nhân sự & Ghi chú</div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>QC (người)</label>
+                        <input list="qcPersonList" id="qcPerson" />
+                        <datalist id="qcPersonList"></datalist>
+                    </div>
+                    <div class="form-group">
+                        <label>Prod</label>
+                        <input list="prodPersonList" id="prodPerson" />
+                        <datalist id="prodPersonList"></datalist>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Ghi chú</label>
+                    <textarea id="notes" rows="2"></textarea>
+                </div>
+            </div>
+
+            <div class="section" style="display:flex; gap:10px; align-items:center;">
+                <button id="submitBtn">Lưu dữ liệu</button>
+            </div>
+        </div>
+
+        <div id="preview-tab" class="tab-content">
+            <div class="section">
+                <div class="section-title">👁️ Xem trước dữ liệu</div>
+                <div style="overflow:auto;">
+                    <table style="width:100%; border-collapse:collapse;">
+                        <thead>
+                            <tr>
+                                <th>Ngày</th><th>Khách</th><th>PO</th><th>Mã</th><th>Thời gian</th><th>Giao</th><th>QC Check</th><th>OK</th><th>NG</th><th>Lỗi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="previewTableBody">
+                            <tr><td colspan="10" style="text-align:center;">Chưa có dữ liệu</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div id="stats-tab" class="tab-content">
+            <div class="section">
+                <div class="section-title">📊 Lọc & Thống kê</div>
+                <div class="filter-controls">
+                    <div class="form-group" style="min-width:140px;">
+                        <label>Từ ngày</label>
+                        <input type="date" id="fromDate" />
+                    </div>
+                    <div class="form-group" style="min-width:140px;">
+                        <label>Đến ngày</label>
+                        <input type="date" id="toDate" />
+                    </div>
+                    <div class="form-group" style="min-width:140px;">
+                        <label>Tháng</label>
+                        <select id="monthFilter"><option value="">Tất cả tháng</option></select>
+                    </div>
+                    <div class="form-group" style="min-width:140px;">
+                        <label>Mã sản phẩm</label>
+                        <select id="productFilter"><option value="">Tất cả mã</option></select>
+                    </div>
+                    <div class="form-group" style="min-width:140px;">
+                        <label>PO</label>
+                        <select id="poFilter"><option value="">Tất cả PO</option></select>
+                    </div>
+                    <div style="display:flex; gap:8px; align-items:flex-end;">
+                        <button id="filterData">Lọc dữ liệu</button>
+                        <button id="loadFromSheets" style="background:#28a745">↻ Tải từ Google Sheets</button>
+                        <button id="exportLocalData" class="secondary">📥 Xuất cục bộ</button>
+                    </div>
+                </div>
+
+                <div class="summary-cards">
+                    <div class="summary-card"><h3>Tổng sản phẩm</h3><p id="totalProducts">0</p></div>
+                    <div class="summary-card"><h3>Tỷ lệ OK</h3><p id="okRate">0%</p></div>
+                    <div class="summary-card"><h3>Tỷ lệ NG</h3><p id="ngRate">0%</p></div>
+                    <div class="summary-card"><h3>Số mã</h3><p id="totalProductsCode">0</p></div>
+                </div>
+
+                <div class="section-title">📈 Thống kê lỗi & Biểu đồ</div>
+
+                <div style="overflow:auto;">
+                    <table style="width:100%; border-collapse:collapse;">
+                        <thead><tr><th>Lỗi</th><th>Số lượng</th><th>Tỉ lệ (%)</th></tr></thead>
+                        <tbody id="errorStats"><tr><td colspan="3" style="text-align:center;">Chưa có dữ liệu</td></tr></tbody>
+                    </table>
+                </div>
+
+                <div class="charts-container">
+                    <div class="chart-wrapper"><canvas id="paretoChart"></canvas></div>
+                    <div class="chart-wrapper" style="height:360px;"><canvas id="defectPieChart"></canvas></div>
+                    <div class="chart-wrapper" style="height:360px;"><canvas id="defectByDayChart"></canvas></div>
+                </div>
+
+            </div>
+        </div>
+
+    </div>
+
+<script>
+/* --------- Globals --------- */
+let allData = [];
+let paretoChartInstance = null;
+let defectPieChartInstance = null;
+let defectByDayChartInstance = null;
+let useLocalStorage = false;
+
+/* History keys for datalists */
+const HISTORY_KEYS = {
+    customer: 'qcHist_customer',
+    productCode: 'qcHist_productCode',
+    errorDesc: 'qcHist_errorDesc',
+    qcPerson: 'qcHist_qcPerson',
+    prodPerson: 'qcHist_prodPerson',
+    po: 'qcHist_po',
+    woId: 'qcHist_woId'
+};
+
+/* --------- Cấu hình mặc định Google Sheets --------- */
+const DEFAULT_CONFIG = {
+    scriptUrl: 'https://script.google.com/macros/s/AKfycbylgbYNPpwEvMUMDLvxKZ-Bc_b5llWeuvfWkFPOcjatKOqFajifWOji6vM51t8kb_uhOQ/exec',
+    sheetId: '1GCnh7TOJ2LG7n84ehgOb2fsqGTyos8aiOloN0RwV7co'
+};
+
+/* --------- Helpers: config/history/localStorage --------- */
+function saveConfig() {
+    localStorage.setItem('qcScriptUrl', document.getElementById('scriptUrl').value || '');
+    localStorage.setItem('qcSheetId', document.getElementById('sheetId').value || '');
+    loadConfig();
+    alert('Đã lưu cấu hình');
+}
+
+function loadConfig() {
+    // Ưu tiên lấy từ localStorage, nếu không có thì lấy từ DEFAULT_CONFIG
+    const savedScriptUrl = localStorage.getItem('qcScriptUrl');
+    const savedSheetId = localStorage.getItem('qcSheetId');
+    
+    document.getElementById('scriptUrl').value = savedScriptUrl || DEFAULT_CONFIG.scriptUrl;
+    document.getElementById('sheetId').value = savedSheetId || DEFAULT_CONFIG.sheetId;
+    
+    // Nếu chưa có trong localStorage thì lưu cấu hình mặc định
+    if (!savedScriptUrl || !savedSheetId) {
+        localStorage.setItem('qcScriptUrl', DEFAULT_CONFIG.scriptUrl);
+        localStorage.setItem('qcSheetId', DEFAULT_CONFIG.sheetId);
+    }
+}
+
+function openScriptEditor() { window.open('https://script.google.com/', '_blank'); }
+function showConfig() { const p = document.getElementById('configPanel'); p.style.display = p.style.display === 'none' ? 'block' : 'none'; }
+
+/* Auto uppercase for text inputs except numeric/date/time */
+document.addEventListener('input', function(e){
+    if (!e.target) return;
+    
+    // Loại trừ các trường cấu hình (có id là scriptUrl hoặc sheetId)
+    if (e.target.id === 'scriptUrl' || e.target.id === 'sheetId') return;
+    
+    if ((e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') && !['number','date','time'].includes(e.target.type)) {
+        // keep cursor position
+        const start = e.target.selectionStart;
+        const end = e.target.selectionEnd;
+        e.target.value = e.target.value.toUpperCase();
+        try { e.target.setSelectionRange(start, end); } catch(err){}
+    }
+});
+
+/* --------- History helpers --------- */
+function loadHistory(key) {
+    try {
+        return JSON.parse(localStorage.getItem(key) || '[]');
+    } catch(e) { return []; }
+}
+function saveHistory(key, arr) {
+    localStorage.setItem(key, JSON.stringify(arr));
+}
+function addToHistory(key, value, datalistId) {
+    if (!value) return;
+    const k = HISTORY_KEYS[key] || key;
+    let arr = loadHistory(k);
+    value = (''+value).toString().trim();
+    if (!value) return;
+    // Uppercase by default (to match auto uppercase behavior)
+    value = value.toUpperCase();
+    // unique & keep recent first
+    arr = arr.filter(x=>x!==value);
+    arr.unshift(value);
+    // limit to 100 entries
+    if (arr.length>100) arr = arr.slice(0,100);
+    saveHistory(k, arr);
+    // update datalist DOM if provided
+    if (datalistId) populateDatalist(datalistId, arr);
+}
+function populateDatalist(id, arr) {
+    const dl = document.getElementById(id);
+    if (!dl) return;
+    dl.innerHTML = '';
+    arr.forEach(v=> {
+        const opt = document.createElement('option');
+        opt.value = v;
+        dl.appendChild(opt);
+    });
+}
+
+/* --------- UI Setup & Event Listeners --------- */
+document.addEventListener('DOMContentLoaded', function(){
+    // Dates default
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('date').value = today;
+    const tenDaysAgo = new Date(); tenDaysAgo.setDate(tenDaysAgo.getDate()-30);
+    document.getElementById('fromDate').value = tenDaysAgo.toISOString().split('T')[0];
+    document.getElementById('toDate').value = today;
+
+    loadConfig();
+    loadHistoriesToUI();
+    loadLocalData();
+    updateFilterDropdowns();
+
+    // populate month selector (last 12 months)
+    populateMonthFilter();
+
+    // buttons
+    document.getElementById('addError').addEventListener('click', addErrorRow);
+    document.getElementById('submitBtn').addEventListener('click', onSubmitClicked);
+    document.getElementById('filterData').addEventListener('click', filterData);
+    document.getElementById('loadFromSheets').addEventListener('click', loadDataFromSheets);
+    document.getElementById('exportLocalData').addEventListener('click', exportLocalData);
+    document.getElementById('monthFilter').addEventListener('change', onMonthFilterChange);
+
+    // tabs
+    document.querySelectorAll('.tab').forEach(tab => {
+        tab.addEventListener('click', function(){
+            document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(tc=>tc.classList.remove('active'));
+            this.classList.add('active');
+            document.getElementById(this.dataset.tab + '-tab').classList.add('active');
+            if (this.dataset.tab === 'stats') {
+                filterData();
+            } else if (this.dataset.tab === 'preview') {
+                displayAllData();
+            }
+        });
+    });
+
+    // remove error row handler (delegation)
+    document.addEventListener('click', function(e){
+        if (e.target && e.target.classList.contains('remove-error')) {
+            const rows = document.querySelectorAll('.error-row');
+            if (rows.length > 1) {
+                e.target.closest('.error-row').remove();
+            } else {
+                alert('Cần ít nhất một hàng lỗi');
+            }
+        }
+    });
+
+    // preview filters update
+    updatePreview();
+    
+    // Tự động test kết nối khi load trang
+    setTimeout(() => {
+        testConnection();
+    }, 1000);
+});
+
+function loadHistoriesToUI() {
+    populateDatalist('customerList', loadHistory(HISTORY_KEYS.customer));
+    populateDatalist('productCodeList', loadHistory(HISTORY_KEYS.productCode));
+    populateDatalist('errorDescList', loadHistory(HISTORY_KEYS.errorDesc));
+    populateDatalist('qcPersonList', loadHistory(HISTORY_KEYS.qcPerson));
+    populateDatalist('prodPersonList', loadHistory(HISTORY_KEYS.prodPerson));
+    populateDatalist('poList', loadHistory(HISTORY_KEYS.po));
+    populateDatalist('woIdList', loadHistory(HISTORY_KEYS.woId));
+}
+
+/* --------- Add / manage error rows --------- */
+function addErrorRow(){
+    const container = document.getElementById('errorContainer');
+    const div = document.createElement('div');
+    div.className = 'error-row';
+    div.style.display = 'flex'; div.style.gap = '8px'; div.style.alignItems = 'center';
+    div.innerHTML = `<select class="error-desc">
+                        <option value="">-- Chọn mô tả lỗi --</option>
+                        <option value="LỖI THANH ĐỒNG">LỖI THANH ĐỒNG</option>
+                        <option value="MẤT LINH KIỆN">MẤT LINH KIỆN</option>
+                        <option value="BẮC CẦU LINH KIỆN">BẮC CẦU LINH KIỆN</option>
+                        <option value="LỖI CONNECTOR TRẮNG">LỖI CONNECTOR TRẮNG</option>
+                        <option value="NGƯỢC HƯỚNG">NGƯỢC HƯỚNG</option>
+                        <option value="LỖI DÂY ÂM">LỖI DÂY ÂM</option>
+                        <option value="MỐI HÀN">MỐI HÀN</option>
+                        <option value="LỖI BỌC CO NHIỆT">LỖI BỌC CO NHIỆT</option>
+                        <option value="LỖI CONNECTOR ĐEN">LỖI CONNECTOR ĐEN</option>
+                        <option value="BỂ, VỠ LINH KIỆN">BỂ, VỠ LINH KIỆN</option>
+                        <option value="LỖI PCB">LỖI PCB</option>
+                        <option value="LỖI QR CODE">LỖI QR CODE</option>
+                        <option value="LỖI TẤM NHÔM">LỖI TẤM NHÔM</option>
+                        <option value="LỖI KEO POTTING">LỖI KEO POTTING</option>
+                        <option value="LỖI VỆ SINH">LỖI VỆ SINH</option>
+                        <option value="LỖI TEST ĐIỆN">LỖI TEST ĐIỆN</option>
+                        <option value="LỖI ỐC TRẮNG">LỖI ỐC TRẮNG</option>
+                        <option value="LỖI ỐC VÀNG">LỖI ỐC VÀNG</option>
+                        <option value="LỖI FORM U">LỖI FORM U</option>
+                        <option value="LỖI 3M">LỖI 3M</option>
+                        <option value="LỖI KHÔNG CÓ NHÃN TEST PASS">LỖI KHÔNG CÓ NHÃN TEST PASS</option>
+                        <option value="LỖI LỆCH LINH KIỆN">LỖI LỆCH LINH KIỆN</option>
+                        <option value="LỖI SAI LINH KIỆN">LỖI SAI LINH KIỆN</option>
+                        <option value="LỖI MOSFET">LỖI MOSFET</option>
+                        <option value="HÀN GIẢ">HÀN GIẢ</option>
+                        <option value="LỖI TRỞ SHUNT">LỖI TRỞ SHUNT</option>
+                        <option value="LỖI COATING">LỖI COATING</option>
+                        <option value="LỖI NHÃN DÁN">LỖI NHÃN DÁN</option>
+                     </select>
+                     <input type="number" class="error-qty" min="0" placeholder="Số lượng" />
+                     <button type="button" class="remove-error secondary" style="padding:6px 8px;">Xóa</button>`;
+    container.appendChild(div);
+}
+
+
+/* --------- Submit flow --------- */
+async function onSubmitClicked(e){
+    e.preventDefault();
+    const data = collectFormData();
+    if (!data) return;
+    // save histories (customer, product, qc person, prod person, po, woId, errors)
+    saveFieldHistories(data);
+
+    // If connection configured try to send, otherwise local save
+    const scriptUrl = localStorage.getItem('qcScriptUrl') || '';
+    if (scriptUrl) {
+        try {
+            await sendDataToSheets(data);
+            resetFormFields();
+            alert('Đã gửi dữ liệu (hoặc lưu cục bộ nếu thất bại).');
+        } catch(err) {
+            console.error(err);
+            saveDataToLocal(data);
+            resetFormFields();
+            alert('Lưu cục bộ do lỗi khi gửi.');
+        }
+    } else {
+        saveDataToLocal(data);
+        resetFormFields();
+        alert('Chưa cấu hình Google Script -> dữ liệu đã lưu cục bộ.');
+    }
+    displayAllData();
+}
+
+/* collect form */
+function collectFormData(){
+   const deliveredQty = parseInt(document.getElementById('deliveredQty').value || 0);
+const qcCheckQty = parseInt(document.getElementById('qcCheckQty').value || 0);
+const okQty = parseInt(document.getElementById('okQty').value || 0);
+const ngQty = parseInt(document.getElementById('ngQty').value || 0);
+
+// Đổi kiểm tra: OK + NG phải = số lượng QC check
+if (qcCheckQty !== (okQty + ngQty)) {
+    if (!(qcCheckQty === 0 && okQty === 0 && ngQty === 0)) {
+        alert('Số lượng QC check phải bằng OK + NG (hoặc để cả 3 là 0)');
+        return null;
+    }
+}
+
+    const errors = [];
+    document.querySelectorAll('#errorContainer .error-row').forEach(r=>{
+        const desc = (r.querySelector('.error-desc').value || '').toString().trim();
+        const qty = parseInt(r.querySelector('.error-qty').value || 0);
+        if (desc && qty>0) errors.push({description:desc, quantity:qty});
+    });
+    const obj = {
+        timestamp: new Date().toISOString(),
+        customer: (document.getElementById('customer').value || '').trim(),
+        po: (document.getElementById('po').value || '').trim(),
+        woId: (document.getElementById('woId').value || '').trim(),
+        shift: document.getElementById('shift').value || '',
+        productCode: (document.getElementById('productCode').value || '').trim(),
+        date: document.getElementById('date').value,
+        productionTime: document.getElementById('productionTime').value,
+        deliveredQty: deliveredQty,
+        qcCheckQty: qcCheckQty,
+        okQty: okQty,
+        ngQty: ngQty,
+        errors: errors,
+        qcPerson: (document.getElementById('qcPerson').value || '').trim(),
+        prodPerson: (document.getElementById('prodPerson').value || '').trim(),
+        notes: (document.getElementById('notes').value || '').trim()
+    };
+    return obj;
+}
+
+/* save small histories from submitted data */
+function saveFieldHistories(data) {
+    try {
+        addToHistory('customer', data.customer, 'customerList');
+        addToHistory('productCode', data.productCode, 'productCodeList');
+        addToHistory('qcPerson', data.qcPerson, 'qcPersonList');
+        addToHistory('prodPerson', data.prodPerson, 'prodPersonList');
+        addToHistory('po', data.po, 'poList');
+        addToHistory('woId', data.woId, 'woIdList');
+        // errors
+        if (Array.isArray(data.errors)) {
+            data.errors.forEach(err => {
+                if (err && err.description) addToHistory('errorDesc', err.description, 'errorDescList');
+            });
+        }
+    } catch(err) {
+        console.error('saveFieldHistories', err);
+    }
+}
+
+/* reset form fields */
+function resetFormFields(){
+    document.getElementById('deliveredQty').value = '';
+    document.getElementById('qcCheckQty').value = '';
+    document.getElementById('okQty').value = '';
+    document.getElementById('ngQty').value = '';
+    document.getElementById('notes').value = '';
+    document.getElementById('customer').value = '';
+    document.getElementById('po').value = '';
+    document.getElementById('woId').value = '';
+    document.getElementById('productCode').value = '';
+    document.getElementById('qcPerson').value = '';
+    document.getElementById('prodPerson').value = '';
+    // reset first error row
+    const ec = document.getElementById('errorContainer');
+    ec.innerHTML = `<div class="error-row" style="display:flex; gap:8px; align-items:center;">
+        <input list="errorDescList" class="error-desc" placeholder="Mô tả lỗi" />
+        <input type="number" class="error-qty" min="0" placeholder="Số lượng" />
+        <button type="button" class="remove-error secondary" style="padding:6px 8px;">Xóa</button>
+    </div>`;
+}
+
+/* --------- Local storage data management --------- */
+function saveDataToLocal(item){
+    const arr = JSON.parse(localStorage.getItem('qcLocalData')||'[]');
+    arr.push(item);
+    localStorage.setItem('qcLocalData', JSON.stringify(arr));
+    allData = arr;
+    updateFilterDropdowns();
+}
+
+function loadLocalData(){
+    try {
+        const arr = JSON.parse(localStorage.getItem('qcLocalData')||'[]');
+        if (arr && arr.length>0) {
+            allData = arr;
+            updateFilterDropdowns();
+        } else {
+            allData = [];
+        }
+    } catch(err){ console.error('loadLocalData', err); allData = []; }
+    displayAllData();
+}
+
+/* --------- Server (Sheets) interactions - simple GET style used in original file --------- */
+async function sendDataToSheets(data){
+    const scriptUrl = localStorage.getItem('qcScriptUrl') || '';
+    const sheetId = localStorage.getItem('qcSheetId') || '';
+    if (!scriptUrl) throw new Error('Chưa cấu hình scriptUrl');
+    const url = `${scriptUrl}?action=addData&data=${encodeURIComponent(JSON.stringify(data))}&sheetId=${sheetId}`;
+    const resp = await fetch(url, { method:'GET', mode:'cors' });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const result = await resp.json();
+    // optionally handle result
+    // refresh local view
+    await loadDataFromSheets().catch(()=>loadLocalData());
+    return result;
+}
+
+async function loadDataFromSheets(){
+    const scriptUrl = localStorage.getItem('qcScriptUrl') || '';
+    const sheetId = localStorage.getItem('qcSheetId') || '';
+    if (!scriptUrl) { alert('Vui lòng cấu hình URL Google Apps Script trước'); showConfig(); return; }
+    try {
+        const url = `${scriptUrl}?action=getData&sheetId=${sheetId}`;
+        const resp = await fetch(url, { method:'GET', mode:'cors' });
+        const result = await resp.json();
+        if (result.status === 'success' && Array.isArray(result.data)) {
+            
+            // Normalize data from server to match our expected format
+            allData = result.data.map(it => {
+                // Map server fields to our expected format
+                const obj = {
+                    ...it,
+                    deliveredQty: it.delivered_qty || it.deliveredQty || 0,
+                    qcCheckQty: it.qc_check_qty || it.qcCheckQty || it.qcCheck || 0,
+                    okQty: it.ok_qty || it.okQty || 0,
+                    ngQty: it.ng_qty || it.ngQty || 0,
+                    productCode: it.product_code || it.productCode || '',
+                    productionTime: it.production_time || it.productionTime || '',
+                    qcPerson: it.qc_person || it.qcPerson || '',
+                    prodPerson: it.prod_person || it.prodPerson || '',
+                    woId: it.wo_id || it.woId || ''
+                };
+                
+                // Ensure date is in YYYY-MM-DD format
+                if (obj.date) {
+                    if (obj.date instanceof Date) {
+                        obj.date = obj.date.toISOString().split('T')[0];
+                    } else if (typeof obj.date === 'string') {
+                        // Handle DD/MM/YYYY format
+                        if (obj.date.includes('/')) {
+                            const parts = obj.date.split('/');
+                            if (parts.length === 3) {
+                                obj.date = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+                            }
+                        }
+                        // Ensure YYYY-MM-DD format
+                        if (!/^\d{4}-\d{2}-\d{2}$/.test(obj.date)) {
+                            // Try to parse as date
+                            const parsedDate = new Date(obj.date);
+                            if (!isNaN(parsedDate.getTime())) {
+                                obj.date = parsedDate.toISOString().split('T')[0];
+                            }
+                        }
+                    }
+                }
+                
+                return obj;
+            });
+
+            useLocalStorage = false;
+            updateFilterDropdowns();
+            displayAllData();
+            filterData();
+        } else {
+            throw new Error(result.message || 'No data');
+        }
+    } catch(err) {
+        console.error('loadDataFromSheets', err);
+        alert('Không tải được dữ liệu từ Sheets. Sử dụng dữ liệu cục bộ nếu có.');
+        useLocalStorage = true;
+        loadLocalData();
+    }
+}
+
+/* --------- Filtering & statistics --------- */
+function populateMonthFilter(){
+    const sel = document.getElementById('monthFilter');
+    sel.innerHTML = '<option value="">Tất cả tháng</option>';
+    const now = new Date();
+    for (let i=0;i<12;i++){
+        const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
+        const val = d.toISOString().slice(0,7); // YYYY-MM
+        const txt = (d.getMonth()+1).toString().padStart(2,'0') + '/' + d.getFullYear();
+        const opt = document.createElement('option');
+        opt.value = val;
+        opt.text = txt;
+        sel.appendChild(opt);
+    }
+}
+
+function onMonthFilterChange(){
+    const m = document.getElementById('monthFilter').value;
+    if (!m) return;
+    // set fromDate and toDate to that month
+    const parts = m.split('-');
+    const year = parseInt(parts[0],10);
+    const month = parseInt(parts[1],10);
+    const from = new Date(year, month-1, 1);
+    const to = new Date(year, month, 0); // last day of month
+    document.getElementById('fromDate').value = from.toISOString().slice(0,10);
+    document.getElementById('toDate').value = to.toISOString().slice(0,10);
+    // auto filter
+    filterData();
+}
+
+function filterData(){
+    const fromDate = document.getElementById('fromDate').value;
+    const toDate = document.getElementById('toDate').value;
+    if (!fromDate || !toDate) { alert('Vui lòng chọn khoảng ngày'); return; }
+    const productFilter = document.getElementById('productFilter').value || '';
+    const poFilter = document.getElementById('poFilter') ? document.getElementById('poFilter').value || '' : '';
+
+    let filtered = allData.filter(item => item.date >= fromDate && item.date <= toDate);
+    if (productFilter) filtered = filtered.filter(it => (it.productCode||'') === productFilter);
+    if (poFilter) filtered = filtered.filter(it => ((it.po||'').toString().trim().toUpperCase() === poFilter.toString().trim().toUpperCase()));
+    // compute error stats & charts
+    updateErrorStats(filtered);
+    displayAllData(); // preview table
+}
+
+/* compute error stats */
+function updateErrorStats(data){
+    const errorStats = {};
+    let totalDefects = 0;
+    let totalProducts = 0;
+    let totalOK = 0;
+    let totalNG = 0;
+    const uniqueProductCodes = new Set();
+
+    data.forEach(item => {
+        totalProducts += parseInt(item.deliveredQty) || 0;
+        totalOK += parseInt(item.okQty) || 0;
+        totalNG += parseInt(item.ngQty) || 0;
+        uniqueProductCodes.add(item.productCode || '');
+        if (item.errors && Array.isArray(item.errors)) {
+            item.errors.forEach(err => {
+                if (err.description && err.quantity) {
+                    errorStats[err.description] = (errorStats[err.description] || 0) + parseInt(err.quantity);
+                    totalDefects += parseInt(err.quantity);
+                }
+            });
+        }
+    });
+
+    document.getElementById('totalProducts').textContent = totalProducts;
+    document.getElementById('okRate').textContent = totalProducts>0 ? Math.round((totalOK/totalProducts)*100)+'%' : '0%';
+    document.getElementById('ngRate').textContent = totalProducts>0 ? Math.round((totalNG/totalProducts)*100)+'%' : '0%';
+    document.getElementById('totalProductsCode').textContent = uniqueProductCodes.size;
+
+    const errorArray = Object.keys(errorStats).map(k=>({description:k, quantity:errorStats[k], percentage: totalDefects>0 ? (errorStats[k]/totalDefects*100).toFixed(2) : 0}))
+        .sort((a,b)=>b.quantity - a.quantity);
+
+    const tbody = document.getElementById('errorStats');
+    tbody.innerHTML = '';
+    if (errorArray.length===0) {
+        tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;">Không có dữ liệu lỗi trong khoảng thời gian này</td></tr>';
+    } else {
+        errorArray.forEach(e=>{
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td>${e.description}</td><td>${e.quantity}</td><td>${e.percentage}%</td>`;
+            tbody.appendChild(tr);
+        });
+    }
+
+    // draw charts
+    drawParetoChart(errorArray);
+    drawDefectPieChart(errorArray);
+    drawDefectByDayChart(data);
+    updateFilterDropdowns();
+}
+
+/* --------- Charts --------- */
+function drawParetoChart(errorArray) {
+    const ctx = document.getElementById('paretoChart').getContext('2d');
+    if (paretoChartInstance) paretoChartInstance.destroy();
+
+    if (!errorArray || errorArray.length === 0) {
+        ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+        ctx.font = '16px Arial';
+        ctx.fillStyle = '#666';
+        ctx.textAlign = 'center';
+        ctx.fillText('Không có dữ liệu lỗi', ctx.canvas.width / 2, ctx.canvas.height / 2);
+        return;
+    }
+
+    const labels = errorArray.map(e => e.description);
+    const quantities = errorArray.map(e => e.quantity);
+    const total = quantities.reduce((sum, val) => sum + val, 0);
+    
+    // Calculate cumulative percentages
+    let cumulative = 0;
+    const percentages = quantities.map(q => {
+        cumulative += q;
+        return (cumulative / total) * 100;
+    });
+
+    paretoChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: 'Số lượng lỗi',
+                    data: quantities,
+                    backgroundColor: 'rgba(54, 162, 235, 0.7)',
+                    order: 2
+                },
+                {
+                    label: 'Tỷ lệ tích lũy (%)',
+                    data: percentages,
+                    type: 'line',
+                    borderColor: 'rgba(255, 99, 132, 1)',
+                    backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                    fill: false,
+                    yAxisID: 'y1',
+                    order: 1
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                title: {
+                    display: true,
+                    text: 'Biểu đồ Pareto - Phân tích lỗi'
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Số lượng lỗi'
+                    }
+                },
+                y1: {
+                    position: 'right',
+                    beginAtZero: true,
+                    max: 100,
+                    title: {
+                        display: true,
+                        text: 'Tỷ lệ tích lũy (%)'
+                    },
+                    grid: {
+                        drawOnChartArea: false
+                    }
+                }
+            }
+        }
+    });
+}
+
+function drawDefectPieChart(errorArray) {
+    const ctx = document.getElementById('defectPieChart').getContext('2d');
+    if (defectPieChartInstance) defectPieChartInstance.destroy();
+
+    if (!errorArray || errorArray.length === 0) {
+        ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+        ctx.font = '16px Arial';
+        ctx.fillStyle = '#666';
+        ctx.textAlign = 'center';
+        ctx.fillText('Không có dữ liệu lỗi', ctx.canvas.width / 2, ctx.canvas.height / 2);
+        return;
+    }
+
+    const colors = [
+        'rgba(255, 99, 132, 0.7)', 'rgba(54, 162, 235, 0.7)', 'rgba(255, 206, 86, 0.7)',
+        'rgba(75, 192, 192, 0.7)', 'rgba(153, 102, 255, 0.7)', 'rgba(255, 159, 64, 0.7)',
+        'rgba(199, 199, 199, 0.7)', 'rgba(83, 102, 255, 0.7)', 'rgba(40, 159, 64, 0.7)'
+    ];
+
+    defectPieChartInstance = new Chart(ctx, {
+        type: 'pie',
+        data: {
+            labels: errorArray.map(e => e.description),
+            datasets: [{
+                data: errorArray.map(e => e.quantity),
+                backgroundColor: colors,
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                title: {
+                    display: true,
+                    text: 'Phân bố lỗi'
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const label = context.label || '';
+                            const value = context.raw || 0;
+                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                            const percentage = ((value / total) * 100).toFixed(2);
+                            return `${label}: ${value} (${percentage}%)`;
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+function drawDefectByDayChart(filteredData) {
+    const ctx = document.getElementById('defectByDayChart').getContext('2d');
+    if (defectByDayChartInstance) defectByDayChartInstance.destroy();
+
+    // 1. Tạo object để lưu trữ dữ liệu theo ngày
+    const dailyData = {};
+    
+    // 2. Xử lý dữ liệu từng bản ghi
+    filteredData.forEach(item => {
+        if (!item.date) return;
+        
+        const dateKey = item.date; // Giữ nguyên định dạng YYYY-MM-DD
+        
+        // Khởi tạo nếu chưa có
+        if (!dailyData[dateKey]) {
+            dailyData[dateKey] = {
+                delivered: 0,
+                ng: 0
+            };
+        }
+        
+        // Cộng dồn số lượng - xử lý cả hai định dạng trường
+        dailyData[dateKey].delivered += parseInt(item.deliveredQty || item.delivered_qty || 0);
+        dailyData[dateKey].ng += parseInt(item.ngQty || item.ng_qty || 0);
+    });
+
+    // 3. Lấy khoảng ngày từ filter
+    const fromDateStr = document.getElementById('fromDate').value;
+    const toDateStr = document.getElementById('toDate').value;
+    
+    if (!fromDateStr || !toDateStr) {
+        console.log('Chưa chọn khoảng ngày');
+        return;
+    }
+
+    // 4. Tạo mảng tất cả các ngày trong khoảng
+    const labels = [];
+    const totalData = [];
+    const ngData = [];
+    
+    let currentDate = new Date(fromDateStr);
+    const endDate = new Date(toDateStr);
+    
+    // Duyệt qua từng ngày
+    while (currentDate <= endDate) {
+        // Tạo key theo định dạng YYYY-MM-DD
+        const year = currentDate.getFullYear();
+        const month = String(currentDate.getMonth() + 1).padStart(2, '0');
+        const day = String(currentDate.getDate()).padStart(2, '0');
+        const dateKey = `${year}-${month}-${day}`;
+        
+        // Tạo label cho biểu đồ (DD/MM)
+        labels.push(`${day}/${month}`);
+        
+        // Lấy dữ liệu cho ngày này
+        const dataForDay = dailyData[dateKey] || { delivered: 0, ng: 0 };
+        totalData.push(dataForDay.delivered);
+        ngData.push(dataForDay.ng);
+        
+        // Tăng lên 1 ngày
+        currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    // 5. Kiểm tra nếu không có dữ liệu thì hiển thị thông báo
+    const hasData = totalData.some(val => val > 0) || ngData.some(val => val > 0);
+    
+    if (!hasData) {
+        ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+        ctx.font = '16px Arial';
+        ctx.fillStyle = '#666';
+        ctx.textAlign = 'center';
+        ctx.fillText('Không có dữ liệu trong khoảng thời gian này', ctx.canvas.width / 2, ctx.canvas.height / 2);
+        return;
+    }
+
+    // 6. Vẽ biểu đồ
+    try {
+        defectByDayChartInstance = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'NG',
+                        data: ngData,
+                        backgroundColor: 'rgba(220, 53, 69, 0.8)',
+                        stack: 'stack1'
+                    },
+                    {
+                        label: 'Tổng sản lượng',
+                        data: totalData,
+                        backgroundColor: 'rgba(40, 167, 69, 0.7)',
+                        stack: 'stack1'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Sản lượng & NG theo ngày'
+                    }
+                },
+                scales: {
+                    x: {
+                        stacked: true
+                    },
+                    y: {
+                        stacked: true,
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Lỗi khi vẽ biểu đồ:', error);
+    }
+}
+
+/* --------- Preview / table / dropdowns --------- */
+function displayAllData(){
+    const tbody = document.getElementById('previewTableBody');
+    if (!allData || allData.length===0) {
+        tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;">Chưa có dữ liệu</td></tr>';
+        return;
+    }
+    tbody.innerHTML = '';
+    allData.slice().sort((a,b)=> (b.date||'').localeCompare(a.date||'')).forEach(it=>{
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${it.date||''}</td><td>${it.customer||''}</td><td>${it.po||''}</td><td>${it.productCode||''}</td><td>${it.productionTime||''}</td><td>${it.deliveredQty||0}</td><td>${it.qcCheckQty||0}</td><td>${it.okQty||0}</td><td>${it.ngQty||0}</td><td>${(it.errors||[]).map(e=>e.description+':'+e.quantity).join(', ')}</td>`;
+        tbody.appendChild(tr);
+    });
+    updateFilterDropdowns();
+}
+
+function updateFilterDropdowns(){
+    // product codes
+    const productCodes = [...new Set((allData||[]).map(i=>i.productCode||''))].filter(x=>x);
+    const poList = [...new Set((allData||[]).map(i=>i.po||''))].filter(x=>x);
+    const customerList = [...new Set((allData||[]).map(i=>i.customer||''))].filter(x=>x);
+    const pf = document.getElementById('productFilter');
+    const poSelect = document.getElementById('poFilter');
+    const prev = pf.value;
+    const prevPo = poSelect ? poSelect.value : '';
+    pf.innerHTML = '<option value="">Tất cả sản phẩm</option>';
+    if (poSelect) poSelect.innerHTML = '<option value="">Tất cả PO</option>';
+    productCodes.forEach(pc=>{ const o = document.createElement('option'); o.value=pc; o.text=pc; pf.appendChild(o); });
+    poList.forEach(po=>{ if (poSelect) { const o = document.createElement('option'); o.value=po; o.text=po; poSelect.appendChild(o); } });
+    if (prev) pf.value = prev;
+    if (prevPo && poSelect) poSelect.value = prevPo;
+
+    // also populate datalists from existing data (merge with history)
+    const existingCustomers = loadHistory(HISTORY_KEYS.customer);
+    const mergedCustomers = Array.from(new Set([...customerList, ...existingCustomers])).filter(x=>x);
+    populateDatalist('customerList', mergedCustomers);
+
+    const existingProducts = loadHistory(HISTORY_KEYS.productCode);
+    const mergedProducts = Array.from(new Set([...productCodes, ...existingProducts])).filter(x=>x);
+    populateDatalist('productCodeList', mergedProducts);
+
+    const existingPO = loadHistory(HISTORY_KEYS.po);
+    const mergedPO = Array.from(new Set([...poList, ...existingPO])).filter(x=>x);
+    populateDatalist('poList', mergedPO);
+
+    // errorDescList is handled via history when saving errors
+}
+
+/* preview update */
+function updatePreview(){
+    const data = collectFormData();
+    if (!data) return;
+    const tbody = document.getElementById('previewTableBody');
+    tbody.innerHTML = '';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${data.date||''}</td><td>${data.customer||''}</td><td>${data.po||''}</td><td>${data.productCode||''}</td><td>${data.productionTime||''}</td><td>${data.deliveredQty||0}</td><td>${data.qcCheckQty||0}</td><td>${data.okQty||0}</td><td>${data.ngQty||0}</td><td>${(data.errors||[]).map(e=>e.description+':'+e.quantity).join(', ')}</td>`;
+    tbody.appendChild(tr);
+}
+
+/* export local */
+function exportLocalData(){
+    const data = localStorage.getItem('qcLocalData');
+    if (!data) { alert('Không có dữ liệu cục bộ'); return; }
+    const blob = new Blob([data], {type: 'application/json'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'qc_local_data.json';
+    a.click();
+}
+
+/* --------- Test connection --------- */
+async function testConnection(){
+    const scriptUrl = localStorage.getItem('qcScriptUrl') || '';
+    if (!scriptUrl) { alert('Vui lòng cấu hình URL Google Apps Script trước'); showConfig(); return; }
+    try {
+        const url = `${scriptUrl}?action=test`;
+        const resp = await fetch(url, { method:'GET', mode:'cors' });
+        const result = await resp.json();
+        if (result.status === 'success') {
+            document.getElementById('syncStatus').textContent = 'Đã kết nối';
+            document.getElementById('syncStatus').className = 'status-indicator status-connected';
+            alert('Kết nối thành công: ' + result.message);
+        } else {
+            throw new Error(result.message || 'Unknown error');
+        }
+    } catch(err) {
+        console.error('testConnection', err);
+        document.getElementById('syncStatus').textContent = 'Lỗi kết nối';
+        document.getElementById('syncStatus').className = 'status-indicator status-disconnected';
+        alert('Kết nối thất bại: ' + (err.message || err));
+    }
+}
+document.addEventListener('DOMContentLoaded', function () {
+  // Áp dụng cho Mã sản phẩm
+  const productEl = document.getElementById('productCode');
+  if (productEl) {
+    new Choices(productEl, {
+      searchEnabled: true,
+      shouldSort: false,
+      allowHTML: true,
+      searchPlaceholderValue: 'Tìm mã sản phẩm...',
+      noResultsText: 'Không tìm thấy',
+      noChoicesText: 'Không có lựa chọn',
+    });
+  }
+
+  // Áp dụng cho Mô tả lỗi
+  const errorEl = document.getElementById('errorDesc');
+  if (errorEl) {
+    new Choices(errorEl, {
+      searchEnabled: true,
+      shouldSort: false,
+      allowHTML: true,
+      searchPlaceholderValue: 'Tìm lỗi...',
+      noResultsText: 'Không tìm thấy',
+      noChoicesText: 'Không có lựa chọn',
+    });
+  }
+});
+
+</script>
+</body>
+</html>
